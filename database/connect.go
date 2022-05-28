@@ -6,11 +6,10 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-func NewConnPool(dbURL string) (*pgxpool.Pool, context.Context, error) {
-	ctx := context.Background()
-	dbpool, err := pgxpool.Connect(ctx, dbURL)
+func NewConn(dbURL string) (*pgxpool.Pool, error) {
+	db, err := pgxpool.Connect(context.Background(), dbURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return dbpool, ctx, nil
+	return db, nil
 }

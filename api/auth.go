@@ -1,55 +1,52 @@
 package api
 
 import (
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 
+	"github.com/dedpanguru/workout_logger/database"
 	"github.com/labstack/echo/v4"
 )
 
-func HasJSONHeader(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		if c.Request().Header.Get("Content-Type") == "application/json" {
-			//call next
-			if err = next(c); err != nil {
-				c.Error(err)
+func register(ctx echo.Context) error {
+	// validate JSON body
+	var input database.User
+	if err = json.NewDecoder(ctx.Request().Body).Decode(&input); err != nil {
+		return &echo.HTTPError{
+			Code:    http.StatusInternalServerError,
+			Message: "Invalid JSON body",
+		}
+	}
+
+	// hash password
+	hasher := sha512.New()
+	hasher.Write([]byte(input.Password))
+	hashedPassword := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	// store in DB
+	if _, err = db.Exec(ctx.Request().Context(), "insert into users(name, password) values($1, $2);", input.Name, hashedPassword); err != nil {
+		if strings.Split(err.Error(), " ")[1] == "duplicate" {
+			return &echo.HTTPError{
+				Code:    http.StatusBadRequest,
+				Message: "Username Taken!",
 			}
 		}
-		return nil
-	}
-}
-
-func register(c echo.Context) error {
-	defer dbpool.Close()
-	// read json body
-	var data map[string]any
-	if err = json.NewDecoder(c.Request().Body).Decode(&data); err != nil {
-		http.Error(c.Response().Writer, err.Error(), http.StatusInternalServerError)
-		return err
-	}
-	// verify request structure
-	if data["username"].(string) == "" && data["password"].(string) == "" {
-		http.Error(c.Response().Writer, err.Error(), http.StatusUnprocessableEntity)
-		return err
-	}
-	// check if username is unique
-	var usernames []string
-	if err = dbpool.QueryRow(ctx, "select username from users").Scan(&usernames); err != nil {
-		http.Error(c.Response().Writer, err.Error(), http.StatusInternalServerError)
-		return err
-	}
-	for _, name := range usernames {
-		if name == data["username"].(string) {
-			http.Error(c.Response().Writer, "Username Taken!", http.StatusBadRequest)
-			return err
+		return &echo.HTTPError{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
 		}
 	}
+	return ctx.JSON(http.StatusCreated, echo.Map{
+		"message": "Account Successfully Created!",
+	})
+}
 
-	// credentials are now valid!
-	// hash password before storing
-	key := []byte("secretsecretsecret")
+func getKey() []byte {
 	if os.Getenv("SECRET_KEY") != "" {
-		key = []byte(os.Getenv("SECRET_KEY"))
+		return []byte(os.Getenv("SECRET_KEY"))
 	}
+	return []byte("secretsecretsecret")
 }

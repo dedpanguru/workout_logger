@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -10,28 +11,28 @@ import (
 )
 
 var (
-	dbpool *pgxpool.Pool
-	ctx    context.Context
-	err    error
+	db  *pgxpool.Pool
+	err error
 )
 
-func NewRouter(pool *pgxpool.Pool, c context.Context) *echo.Echo {
-	dbpool = pool
-	ctx = c
+func NewRouter(pool *pgxpool.Pool) *echo.Echo {
+	db = pool
 	router := echo.New()
 	router.Use(middleware.Recover())
 	router.Use(middleware.Logger())
 	router.GET("/", homeHandler)
-	router.POST("/register", register, HasJSONHeader)
+	router.POST("/register", register)
 	return router
 }
 func homeHandler(c echo.Context) error {
-	defer dbpool.Close()
 	var greeting string
-	err = dbpool.QueryRow(ctx, "select 'Hello, world!'").Scan(&greeting)
+	err = db.QueryRow(context.Background(), "select 'Hello, world!'").Scan(&greeting)
 	if err != nil {
-		http.Error(c.Response().Writer, err.Error(), http.StatusInternalServerError)
-		return err
+		log.Printf("Problem with connecting to DB: %s\n", err.Error())
+		return &echo.HTTPError{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		}
 	}
 	return c.JSON(http.StatusOK, map[string]any{
 		"message": greeting,
